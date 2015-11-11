@@ -1,7 +1,7 @@
 {
-  "sources": [
-    "...put a web address here...",
-    "...put another here...",
-    "...and so on..."
-  ]
+	"sources":[
+		"...put a web address here...",
+		"...and another here...",
+		"...and so on..."
+	]
 }
