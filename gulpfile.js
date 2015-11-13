@@ -1,31 +1,17 @@
 var gulp = require('gulp');
 var fs = require('fs');
 var mkdirp = require('mkdirp');
-var Promise = require('bluebird');
 var _ = require('lodash');
 var request = require('request');
-var icsSrc = require('./data/ics/ics-sources.json').sources;
 var ical2json = require('ical2json')
 var data = require('gulp-data');
-var jeditor = require('gulp-json-editor');
-var swig = require('gulp-swig');
-var paths = {
-	"downloadedICS":"tmp/*.ics"
-}
+var moment = require('moment');
+var helpers = require('helper.js');
+var icsSrc = require('./data/ics/ics-sources.json').sources;
 
 //TODO: all icals in the data folder
 
 gulp.task('default',['make-tmp-folder','download-ics','ics-to-json']);
-
-gulp.task('test',function(){
-	return gulp.src('tmp/*.ics')
-	.pipe(data(function(file){
-		var data = fs.readFileSync(file.path,"utf-8");
-		return ical2json.convert(data)
-	}))
-	.pipe(jeditor())
-	.pipe(gulp.dest('tmp'));
-});
 
 gulp.task('make-tmp-folder',function(){
 	return mkdirp.sync('tmp/',function(err){
@@ -41,13 +27,35 @@ gulp.task('download-ics',function(){
 });
 
 gulp.task('ics-to-json',function(){
-	return _.map(icsSrc,function(x){
-		var filename = "tmp/"+x.name+".ics";
-		var outfile = "tmp/"+x.name+".json";
-		console.log(filename);
-		return gulp.src(paths.downloadedICS)
-			.pipe(function(data){
-				console.log(data);
-			});
-	});
+	return gulp.src('tmp/*.ics','data/ics/*.ics','data/ics/*.ical')
+	.pipe(data(function(f){
+		data = fs.readFileSync(f.path,"utf-8");
+		var jsondata = ical2json.convert(data);
+		var name = (f.path.replace(/^.*[\\\/]/, '').match(/(.+?)(\.[^.]*$|$)/)[1]) + '.json';
+		var fullname = f.base + name;
+		console.log(jsondata);
+		return fs.writeFileSync(fullname,JSON.stringify(jsondata));
+	}));
 });
+
+gulp.task('json-to-mongodb', function(){
+	return gulp.src('tmp/*.json')
+	.pipe(data(function(f){
+		console.log(f.path);
+		var cal = require(f.path).VCALENDAR[0];
+		var events = cal.VEVENT;
+		//map events 
+		var events = _.map(events,function(e){
+			e.ORIGIN = cal["X-WR-CALNAME"];
+			e["ISO-LAST-MODIFIED"] = helpers.fixIcsDate(e.DTSTART);
+			e["ISO-DTSTART"] = helpers.fixIcsDate(e.DTSTART);
+			e["ISO-DTEND"] = helpers.fixIcsDate(e.DTEND);
+			return e;
+		})
+		console.log(events[0]);
+	}))
+});
+
+gulp.task('cleanup',function(){
+	//TODO: delete all items in tmp folder
+})
