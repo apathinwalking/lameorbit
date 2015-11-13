@@ -2,14 +2,15 @@ var gulp = require('gulp');
 var fs = require('fs');
 var mkdirp = require('mkdirp');
 var _ = require('lodash');
+var Promise = require('bluebird');
 var request = require('request');
 var ical2json = require('ical2json')
 var data = require('gulp-data');
 var moment = require('moment');
-var helpers = require('helper.js');
+var mp = require('mongodb-promise');
+var helpers = require('./helpers.js');
+var config = require('./config.json');
 var icsSrc = require('./data/ics/ics-sources.json').sources;
-
-//TODO: all icals in the data folder
 
 gulp.task('default',['make-tmp-folder','download-ics','ics-to-json']);
 
@@ -52,7 +53,12 @@ gulp.task('json-to-mongodb', function(){
 			e["ISO-DTEND"] = helpers.fixIcsDate(e.DTEND);
 			return e;
 		})
-		console.log(events[0]);
+		return mp.MongoClient.connect(config.mongo_uri)
+			.then(function(db){
+				return db.stats().then(function(stats){
+					console.log(stats);
+				})
+			})
 	}))
 });
 

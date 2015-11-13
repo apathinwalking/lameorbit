@@ -15,7 +15,8 @@
     "serve-favicon": "~2.3.0",
     "lodash": "~3.10.1",
     "bluebird": "~3.0.5",
-    "mongodb": "~2.0.48"
+    "mongodb": "~2.0.48",
+    "mongodb-promise": "0.0.4"
   },
   "devDependencies": {
     "gulp": "~3.9.0",
