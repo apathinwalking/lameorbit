@@ -1,4 +1,5 @@
-./bin/*
-./node_modules/*
-./data/ics/ics-sources.json
-./config.json
+bin/
+node_modules/
+tmp/
+data/ics/ics-sources.json
+config.json
