@@ -4,7 +4,7 @@ var mkdirp = require('mkdirp');
 var _ = require('lodash');
 var Promise = require('bluebird');
 var request = require('request');
-var ical2json = require('ical2json')
+var ical2json = require('ical2json');
 var data = require('gulp-data');
 var moment = require('moment');
 var mp = require('mongodb-promise');
@@ -16,14 +16,14 @@ gulp.task('default',['make-tmp-folder','download-ics','ics-to-json']);
 
 gulp.task('make-tmp-folder',function(){
 	return mkdirp.sync('tmp/',function(err){
-		if(err) console.error(err)
+		if(err) console.error(err);
 	});
 });
 
 gulp.task('download-ics',function(){
 	return _.map(icsSrc,function(x){
 		return request(x.url)
-			.pipe(fs.createWriteStream("tmp/"+x.name+".ics"))
+			.pipe(fs.createWriteStream("tmp/"+x.name+".ics"));
 	});
 });
 
@@ -45,23 +45,23 @@ gulp.task('json-to-mongodb', function(){
 		console.log(f.path);
 		var cal = require(f.path).VCALENDAR[0];
 		var events = cal.VEVENT;
-		//map events 
-		var events = _.map(events,function(e){
+		//map events
+		events = _.map(events,function(e){
 			e.ORIGIN = cal["X-WR-CALNAME"];
 			e["ISO-LAST-MODIFIED"] = helpers.fixIcsDate(e.DTSTART);
 			e["ISO-DTSTART"] = helpers.fixIcsDate(e.DTSTART);
 			e["ISO-DTEND"] = helpers.fixIcsDate(e.DTEND);
 			return e;
-		})
+		});
 		return mp.MongoClient.connect(config.mongo_uri)
 			.then(function(db){
 				return db.stats().then(function(stats){
 					console.log(stats);
-				})
-			})
-	}))
+				});
+			});
+	}));
 });
 
 gulp.task('cleanup',function(){
 	//TODO: delete all items in tmp folder
-})
+});
