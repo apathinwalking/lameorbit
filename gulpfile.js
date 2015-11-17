@@ -3,16 +3,41 @@ var fs = require('fs');
 var mkdirp = require('mkdirp');
 var _ = require('lodash');
 var Promise = require('bluebird');
-var request = require('request');
+var rp = require('request-promise');
+var jcal = require('ical.js');
+var ical = require('ical');
 var ical2json = require('ical2json');
 var data = require('gulp-data');
 var moment = require('moment');
 var mp = require('mongodb-promise');
+var clean = require('gulp-clean');
 var helpers = require('./helpers.js');
 var config = require('./config.json');
 var icsSrc = require('./data/ics/ics-sources.json').sources;
 
-gulp.task('default',['make-tmp-folder','download-ics','ics-to-json']);
+gulp.task('default',['create-collections','make-tmp-folder','download-ics','ics-to-json','json-to-mongodb']);
+
+gulp.task('create-collections',function(){
+	return mp.MongoClient.connect(config.mongo_uri)
+		.then(function(db){
+			return db.createCollection(config.main_collection)
+				.then(function(){
+					return db.close();
+				});
+		});
+});
+
+gulp.task('delete-collections',function(){
+	return mp.MongoClient.connect(config.mongo_uri)
+		.then(function(db){
+			return db.collection(config.main_collection)
+			.then(function(col){
+				return col.remove().then(function(){
+										return db.close();
+				});
+			});
+		});
+});
 
 gulp.task('make-tmp-folder',function(){
 	return mkdirp.sync('tmp/',function(err){
@@ -20,48 +45,100 @@ gulp.task('make-tmp-folder',function(){
 	});
 });
 
-gulp.task('download-ics',function(){
-	return _.map(icsSrc,function(x){
-		return request(x.url)
-			.pipe(fs.createWriteStream("tmp/"+x.name+".ics"));
+gulp.task('download-ics',['make-tmp-folder'],function(){
+	var promises  = _.map(icsSrc,function(x){
+		console.log(x.url);
+		return rp(x.url).then(function(data){
+			return fs.writeFileSync("tmp/"+x.name+".ics",data);
+		});
 	});
+	return Promise.all(promises);
 });
 
-gulp.task('ics-to-json',function(){
-	return gulp.src('tmp/*.ics','data/ics/*.ics','data/ics/*.ical')
+gulp.task('ics-to-json',['download-ics'],function(){
+	return gulp.src(['tmp/*.ics','data/ics/*.ics','data/ics/*.ical'])
 	.pipe(data(function(f){
-		data = fs.readFileSync(f.path,"utf-8");
-		var jsondata = ical2json.convert(data);
+		console.log(f.path);
+		var data = fs.readFileSync(f.path,"utf-8");
+		console.log(data.length);
+		var jsondata = ical.parseICS(data);
+		jsondata = _.filter(jsondata,function(v){
+			if(v.type === 'VEVENT'){return v;}
+		});
+		//console.log(jsondata);
+		jsondata = {events:_.values(jsondata)};
 		var name = (f.path.replace(/^.*[\\\/]/, '').match(/(.+?)(\.[^.]*$|$)/)[1]) + '.json';
 		var fullname = f.base + name;
-		console.log(jsondata);
 		return fs.writeFileSync(fullname,JSON.stringify(jsondata));
 	}));
 });
 
-gulp.task('json-to-mongodb', function(){
+gulp.task('json-to-mongodb',['ics-to-json','create-collections'],function(){
 	return gulp.src('tmp/*.json')
 	.pipe(data(function(f){
 		console.log(f.path);
-		var cal = require(f.path).VCALENDAR[0];
-		var events = cal.VEVENT;
+		var events = require(f.path).events;
 		//map events
 		events = _.map(events,function(e){
-			e.ORIGIN = cal["X-WR-CALNAME"];
-			e["ISO-LAST-MODIFIED"] = helpers.fixIcsDate(e.DTSTART);
-			e["ISO-DTSTART"] = helpers.fixIcsDate(e.DTSTART);
-			e["ISO-DTEND"] = helpers.fixIcsDate(e.DTEND);
+			var dateobj = helpers.fixIcsDate(e['last-modified']);
+			e["iso-start"] = new Date(e.start);
+			e["iso-end"] = new Date(e.end);
 			return e;
 		});
 		return mp.MongoClient.connect(config.mongo_uri)
 			.then(function(db){
-				return db.stats().then(function(stats){
-					console.log(stats);
-				});
+				return db.collection(config.main_collection)
+					.then(function(col){
+						var promises = _.map(events,function(e){
+							// var query = {$or: [
+							// 		{url:  e.url},
+							// 		{summary: e.summary},
+							// 		{uid: e.uid},
+							// 	]};
+							var query = {'$or':[]};
+							if(e.url){query['$or'].push({url:e.url})};
+							if(e.uid){query['$or'].push({uid:e.uid})};
+							return col.find(query).toArray()
+								.then(function(results){
+									if(results.length > 0){
+										var other = results[0];
+										if(other['iso-last-modified'] >= e['iso-last-modified']){
+											//console.log('not updating duplicate entry... ' + other.summary);
+											return;
+										}
+										else if (other['iso-last-modified'] === undefined || other['iso-last-modified' === 'undefined']){
+											//TODO: FIX THIS!
+											return;
+										}
+										else{
+											console.log('updating duplicate entry... ' + other.summary);
+											console.log(e);
+											var query  = {
+												_id:other.id
+											};
+											return col.update(query,e);
+										}
+									}
+									else{
+										return col.insert(e);
+									}
+								});
+						});
+						return Promise.all(promises).then(function(){
+							return db.close().then(console.log("closed"));
+						});
+					});
 			});
+			return f;
 	}));
 });
 
 gulp.task('cleanup',function(){
-	//TODO: delete all items in tmp folder
+	return gulp.src('./tmp',{read:false})
+		.pipe(clean());
 });
+
+gulp.task('sequential-cleanup',['json-to-mongodb'],function(){
+	return gulp.src('./tmp',{read:false})
+		.pipe(clean());
+})

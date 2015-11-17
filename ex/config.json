@@ -1,3 +1,4 @@
 {
-	"mongo_uri":"mongodb://localhost/lameorbit"
+	"mongo_uri":"mongodb://localhost/lameorbit",
+	"main_collection":"lameorbit"
 }

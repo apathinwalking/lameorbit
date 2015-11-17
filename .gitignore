@@ -3,3 +3,4 @@ node_modules/
 tmp/
 data/ics/ics-sources.json
 config.json
+_*
